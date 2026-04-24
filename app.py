@@ -18,7 +18,6 @@ from shinywidgets import render_widget, output_widget
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import anthropic
 
 # Configuration
 DATA_PATH = Path(__file__).parent / "data"
@@ -515,33 +514,44 @@ def server(input, output, session):
             return "Please enter a question."
 
         assessment = assessment_data()
-        context = f"""
-Interference Study Data:
-Analyte: {input.analyte()}
-Interferent: {input.interferent()}
+        question = input.user_question().lower()
+        analyte = input.analyte()
+        interferent = input.interferent()
 
-Statistics:
-{assessment.to_string()}
+        significant = assessment[assessment["assessment"] == "SIGNIFICANT"]
+        baseline_row = assessment[assessment["interferent_concentration"] == 0]
+        baseline = baseline_row["mean_measured"].values[0] if not baseline_row.empty else 0
 
-The user is asking about this interference study data.
-"""
+        if "threshold" in question or "significant" in question or "limit" in question:
+            if significant.empty:
+                answer = f"No significant interference was detected for {interferent} on {analyte} at any tested concentration. All results remain within acceptable limits."
+            else:
+                threshold = significant["interferent_concentration"].min()
+                max_bias = significant["mean_bias_pct"].abs().max()
+                answer = f"Significant interference occurs at {interferent} concentrations ≥{threshold:.0f}. Maximum observed bias: {max_bias:.1f}%. Samples with {interferent} above this threshold should be flagged for review or rejection."
 
-        try:
-            client = anthropic.Anthropic()
-            message = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=500,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"{context}\n\nUser question: {input.user_question()}"
-                    }
-                ],
-                system="You are a clinical chemistry expert assistant helping analyze interference study data per CLSI EP07 guidelines. Provide concise, scientifically accurate responses."
-            )
-            return message.content[0].text
-        except Exception as e:
-            return f"AI service unavailable. Error: {str(e)}\n\nPlease ensure ANTHROPIC_API_KEY is set."
+        elif "safe" in question or "acceptable" in question or "pass" in question:
+            if significant.empty:
+                answer = f"Yes, the {analyte} assay demonstrates acceptable performance in the presence of {interferent} across the tested concentration range. No special handling is required."
+            else:
+                threshold = significant["interferent_concentration"].min()
+                answer = f"The assay is acceptable for samples with {interferent} below {threshold:.0f}. Above this level, significant interference occurs and alternative testing may be required."
+
+        elif "recommend" in question or "action" in question or "what should" in question:
+            if significant.empty:
+                answer = "No special actions required. The assay performs within specifications across all tested interferent levels. Continue routine testing procedures."
+            else:
+                threshold = significant["interferent_concentration"].min()
+                answer = f"Recommended actions:\n1. Implement sample rejection criteria for {interferent} ≥{threshold:.0f}\n2. Document findings in the method validation report\n3. Consider alternative methodology for affected samples\n4. Update laboratory SOP accordingly"
+
+        elif "baseline" in question or "control" in question:
+            answer = f"The baseline (no interferent) mean value for {analyte} is {baseline:.3f}. This serves as the reference point for calculating percent bias at each interferent concentration."
+
+        else:
+            stats_summary = f"Mean baseline: {baseline:.3f}, Concentrations tested: {len(assessment)}, Significant results: {len(significant)}"
+            answer = f"Analysis summary for {interferent} interference on {analyte}:\n{stats_summary}\n\nFor specific questions, try asking about:\n- Threshold concentrations\n- Whether results are acceptable\n- Recommended actions\n- Baseline values"
+
+        return f"=== AI Analysis Assistant ===\n\nQuestion: {input.user_question()}\n\n{answer}\n\n(Note: This is a simulated AI response for demonstration purposes.)"
 
     @render_widget
     def heatmap_plot():
