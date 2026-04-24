@@ -1,0 +1,19 @@
+# Brand configuration for Abbott Diagnostics theme
+# Used by Shiny and Quarto for consistent styling
+
+meta:
+  name: Abbott Diagnostics Interference Studies
+
+color:
+  primary: "#003087"
+  secondary: "#00A3E0"
+  success: "#00843D"
+  warning: "#FF6D00"
+  danger: "#C8102E"
+  light: "#F5F5F5"
+  dark: "#1A1A1A"
+
+typography:
+  base: "Open Sans, sans-serif"
+  headings: "Open Sans, sans-serif"
+  code: "Fira Code, monospace"

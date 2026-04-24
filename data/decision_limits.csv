@@ -1,0 +1,9 @@
+analyte,unit,absolute_limit,percent_limit,clinical_decision_point,reference_guideline
+Glucose,mg/dL,6.0,10.0,126.0,CLIA '88 / CLSI EP07-A3
+Creatinine,mg/dL,0.3,15.0,1.2,CLIA '88 / CLSI EP07-A3
+Total Bilirubin,mg/dL,0.4,20.0,1.0,CLIA '88 / CLSI EP07-A3
+Hemoglobin A1c,%,0.5,6.0,6.5,CLIA '88 / CLSI EP07-A3
+Potassium,mEq/L,0.5,,5.0,CLIA '88 / CLSI EP07-A3
+Troponin I,ng/mL,,30.0,0.04,CLIA '88 / CLSI EP07-A3
+TSH,mIU/L,,20.0,4.0,CLIA '88 / CLSI EP07-A3
+ALT,U/L,,20.0,40.0,CLIA '88 / CLSI EP07-A3

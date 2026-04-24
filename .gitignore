@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Quarto
+/.quarto/
+*_files/
+*.html
+*.pdf
+*.docx
+
+# Data (regenerate from generate_data.py)
+# data/*.csv
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Posit Connect
+rsconnect-python/
+.posit/

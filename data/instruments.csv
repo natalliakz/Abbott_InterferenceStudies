@@ -1,0 +1,4 @@
+instrument_id,manufacturer,model,serial_number,installation_date,last_calibration,location
+CHEM01,Abbott,Architect c8000,SN559371,2022-02-23,2026-04-02 12:02:36.374287,Main Lab
+CHEM02,Roche,AU5800,SN576782,2022-03-22,2026-04-15 12:02:36.374295,Reference Lab
+CHEM03,Abbott,AU5800,SN100119,2022-04-22,2026-03-25 12:02:36.374298,Main Lab

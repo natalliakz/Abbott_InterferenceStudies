@@ -1,0 +1,484 @@
+---
+title: "ICH Q2(R1) Interference/Specificity Validation Report"
+subtitle: "Pharmaceutical Analytical Method Validation"
+author: "Abbott Manufacturing - Analytical Development"
+date: today
+format:
+  pdf:
+    toc: true
+    number-sections: true
+    colorlinks: true
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+  docx:
+    toc: true
+execute:
+  warning: false
+  message: false
+params:
+  analyte: "Glucose"
+  interferent: "Hemolysis"
+  pool_level: "All"
+  spec_limit: 2.0
+  equivalence_margin: 2.0
+  study_id: "INT-2026-001"
+  protocol_number: "VAL-ANA-2026-042"
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(gtsummary)
+library(gt)
+library(broom)
+
+# Parameters
+ANALYTE <- params$analyte
+INTERFERENT <- params$interferent
+POOL_LEVEL <- params$pool_level
+SPEC_LIMIT <- params$spec_limit
+EQUIV_MARGIN <- params$equivalence_margin
+STUDY_ID <- params$study_id
+PROTOCOL <- params$protocol_number
+
+# Load data
+studies <- read_csv("../data/interference_studies.csv", show_col_types = FALSE) |>
+  mutate(study_date = as.Date(study_date))
+
+limits <- read_csv("../data/decision_limits.csv", show_col_types = FALSE)
+
+# Filter data
+filtered <- studies |>
+  filter(analyte == ANALYTE, interferent == INTERFERENT)
+
+if (POOL_LEVEL != "All") {
+  filtered <- filtered |> filter(pool_level == POOL_LEVEL)
+}
+
+# Get regulatory limit
+limit_row <- limits |> filter(analyte == ANALYTE)
+reg_limit <- if (nrow(limit_row) > 0 && !is.na(limit_row$percent_limit[1])) {
+  limit_row$percent_limit[1]
+} else {
+  SPEC_LIMIT
+}
+```
+
+**DISCLAIMER:** This project contains synthetic data and analysis created for demonstration purposes only.
+
+# Document Control
+
+| Field | Value |
+|-------|-------|
+| **Study ID** | `r STUDY_ID` |
+| **Protocol Number** | `r PROTOCOL` |
+| **Report Date** | `r format(Sys.Date(), "%d %B %Y")` |
+| **Analyte (API)** | `r ANALYTE` |
+| **Interferent/Excipient** | `r INTERFERENT` |
+| **Acceptance Criterion** | ±`r SPEC_LIMIT`% |
+| **Regulatory Reference** | ICH Q2(R1) Section 2.2 |
+
+# Executive Summary
+
+```{r executive-summary, echo=FALSE}
+# Calculate statistics
+stats_df <- filtered |>
+  group_by(interferent_concentration) |>
+  summarise(
+    n = n(),
+    mean_measured = mean(measured_value),
+    sd_measured = sd(measured_value),
+    mean_bias_pct = mean(bias_percent),
+    sd_bias_pct = sd(bias_percent),
+    baseline = first(baseline_value),
+    .groups = "drop"
+  ) |>
+  mutate(
+    cv_percent = (sd_measured / mean_measured) * 100,
+    assessment = case_when(
+      interferent_concentration == 0 ~ "Baseline",
+      abs(mean_bias_pct) > SPEC_LIMIT ~ "OOS",
+      abs(mean_bias_pct) > SPEC_LIMIT * 0.5 ~ "Borderline",
+      TRUE ~ "Pass"
+    )
+  )
+
+oos_rows <- stats_df |> filter(assessment == "OOS")
+borderline_rows <- stats_df |> filter(assessment == "Borderline")
+```
+
+```{r summary-text, echo=FALSE, results='asis'}
+if (nrow(oos_rows) > 0) {
+  threshold <- min(oos_rows$interferent_concentration)
+  max_bias <- max(abs(oos_rows$mean_bias_pct))
+  direction <- ifelse(oos_rows$mean_bias_pct[1] > 0, "positive", "negative")
+
+  cat("## RESULT: OUT OF SPECIFICATION\n\n")
+  cat(sprintf("**%s demonstrates clinically significant %s interference on %s**\n\n",
+              INTERFERENT, direction, ANALYTE))
+  cat(sprintf("- Threshold concentration: ≥%.0f\n", threshold))
+  cat(sprintf("- Maximum observed bias: %.2f%%\n", max_bias))
+  cat(sprintf("- Acceptance criterion exceeded: ±%.1f%%\n\n", SPEC_LIMIT))
+  cat("**Disposition:** Method validation FAILED for this interferent range.\n\n")
+  cat("**Required Actions:**\n")
+  cat("1. Document deviation per SOP-QA-001\n")
+  cat("2. Perform root cause investigation\n")
+  cat(sprintf("3. Implement sample rejection criteria for specimens with %s ≥%.0f\n",
+              INTERFERENT, threshold))
+  cat("4. Consider alternative analytical methodology\n")
+} else if (nrow(borderline_rows) > 0) {
+  cat("## RESULT: BORDERLINE - REVIEW REQUIRED\n\n")
+  cat(sprintf("**%s shows borderline effects on %s measurement**\n\n", INTERFERENT, ANALYTE))
+  cat("While the acceptance criterion was not exceeded, results warrant additional review.\n\n")
+  cat("**Disposition:** Method validation CONDITIONAL PASS pending review.\n")
+} else {
+  cat("## RESULT: PASS\n\n")
+  cat(sprintf("**No significant interference detected for %s on %s**\n\n", INTERFERENT, ANALYTE))
+  cat(sprintf("All tested concentrations remain within the acceptance criterion of ±%.1f%%.\n\n", SPEC_LIMIT))
+  cat("**Disposition:** Method validation PASSED for this interferent.\n")
+}
+```
+
+# Study Design
+
+## Objective
+
+To evaluate the specificity of the `r ANALYTE` assay in the presence of `r INTERFERENT` per ICH Q2(R1) Section 2.2 (Specificity) requirements.
+
+## Methodology
+
+The study followed a dose-response design consistent with CLSI EP07-A3:
+
+- **Interferent concentrations tested:** `r paste(sort(unique(filtered$interferent_concentration)), collapse = ", ")` `r filtered$interferent_unit[1]`
+- **Pool levels:** `r POOL_LEVEL`
+- **Replicates per condition:** `r filtered |> group_by(interferent_concentration) |> summarise(n = n()) |> pull(n) |> unique() |> paste(collapse = ", ")`
+- **Acceptance criterion:** ±`r SPEC_LIMIT`% bias from baseline
+
+## Materials
+
+```{r materials, echo=FALSE}
+tibble(
+  Item = c("Analyte", "Interferent", "Instrument", "Reagent Lot", "Study Date Range"),
+  Details = c(
+    ANALYTE,
+    INTERFERENT,
+    paste(unique(filtered$instrument_id), collapse = ", "),
+    paste(unique(filtered$lot_number)[1:3], collapse = ", "),
+    paste(range(filtered$study_date), collapse = " to ")
+  )
+) |>
+  gt() |>
+  tab_header(title = "Study Materials") |>
+  cols_width(Item ~ px(150), Details ~ px(300))
+```
+
+# Results
+
+## Descriptive Statistics (gtsummary)
+
+```{r stats-table, echo=FALSE}
+filtered |>
+  mutate(
+    conc_label = paste0(interferent_concentration, " ", interferent_unit)
+  ) |>
+  select(conc_label, measured_value, bias_percent) |>
+  tbl_summary(
+    by = conc_label,
+    statistic = list(
+      measured_value ~ "{mean} ± {sd}",
+      bias_percent ~ "{mean} ± {sd}"
+    ),
+    label = list(
+      measured_value ~ "Measured Value",
+      bias_percent ~ "Bias (%)"
+    ),
+    digits = list(
+      measured_value ~ 3,
+      bias_percent ~ 2
+    )
+  ) |>
+  add_n() |>
+  modify_caption(sprintf("**%s Interference on %s - Summary Statistics**", INTERFERENT, ANALYTE)) |>
+  as_gt() |>
+  tab_options(table.font.size = px(11))
+```
+
+## Dose-Response Curve
+
+```{r dose-response-plot, echo=FALSE, fig.width=10, fig.height=6}
+baseline_mean <- stats_df |> filter(interferent_concentration == 0) |> pull(mean_measured)
+
+ggplot() +
+  # Individual points
+  geom_point(data = filtered,
+             aes(x = interferent_concentration, y = measured_value),
+             alpha = 0.4, color = "#00A3E0", size = 2) +
+  # Mean line
+  geom_line(data = stats_df,
+            aes(x = interferent_concentration, y = mean_measured),
+            color = "#003087", linewidth = 1.2) +
+  geom_point(data = stats_df,
+             aes(x = interferent_concentration, y = mean_measured),
+             color = "#003087", size = 4) +
+  # 95% CI ribbon
+  geom_ribbon(data = stats_df,
+              aes(x = interferent_concentration,
+                  ymin = mean_measured - 1.96 * sd_measured / sqrt(n),
+                  ymax = mean_measured + 1.96 * sd_measured / sqrt(n)),
+              alpha = 0.2, fill = "#003087") +
+  # Reference lines
+  geom_hline(yintercept = baseline_mean, linetype = "dashed", color = "#00843D") +
+  geom_hline(yintercept = baseline_mean * (1 + SPEC_LIMIT/100),
+             linetype = "dotted", color = "#C8102E") +
+  geom_hline(yintercept = baseline_mean * (1 - SPEC_LIMIT/100),
+             linetype = "dotted", color = "#C8102E") +
+  annotate("text", x = max(filtered$interferent_concentration) * 0.9,
+           y = baseline_mean * 1.01, label = "Baseline", color = "#00843D", size = 3) +
+  annotate("text", x = max(filtered$interferent_concentration) * 0.9,
+           y = baseline_mean * (1 + SPEC_LIMIT/100) * 1.01,
+           label = paste0("+", SPEC_LIMIT, "%"), color = "#C8102E", size = 3) +
+  labs(
+    title = sprintf("Interference of %s on %s", INTERFERENT, ANALYTE),
+    subtitle = "Mean ± 95% CI",
+    x = sprintf("%s (%s)", INTERFERENT, filtered$interferent_unit[1]),
+    y = sprintf("%s (%s)", ANALYTE, filtered$analyte_unit[1])
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"))
+```
+
+## Percent Recovery Plot
+
+```{r recovery-plot, echo=FALSE, fig.width=10, fig.height=5}
+stats_df |>
+  mutate(
+    recovery_pct = (mean_measured / baseline_mean) * 100,
+    color = case_when(
+      assessment == "OOS" ~ "#C8102E",
+      assessment == "Borderline" ~ "#FF6D00",
+      TRUE ~ "#00843D"
+    )
+  ) |>
+  ggplot(aes(x = factor(interferent_concentration), y = recovery_pct, fill = color)) +
+  geom_col(color = "black", width = 0.7) +
+  geom_hline(yintercept = 100, color = "black", linewidth = 1) +
+  geom_hline(yintercept = 100 - SPEC_LIMIT, linetype = "dashed", color = "#C8102E") +
+  geom_hline(yintercept = 100 + SPEC_LIMIT, linetype = "dashed", color = "#C8102E") +
+  scale_fill_identity() +
+  labs(
+    title = "Percent Recovery at Each Interferent Concentration",
+    subtitle = sprintf("Acceptance: %.0f%% - %.0f%%", 100 - SPEC_LIMIT, 100 + SPEC_LIMIT),
+    x = sprintf("%s Concentration (%s)", INTERFERENT, filtered$interferent_unit[1]),
+    y = "% Recovery"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"))
+```
+
+## Bias Analysis
+
+```{r bias-plot, echo=FALSE, fig.width=10, fig.height=5}
+stats_df |>
+  mutate(
+    color = case_when(
+      assessment == "OOS" ~ "#C8102E",
+      assessment == "Borderline" ~ "#FF6D00",
+      assessment == "Baseline" ~ "#F5F5F5",
+      TRUE ~ "#00843D"
+    )
+  ) |>
+  ggplot(aes(x = factor(interferent_concentration), y = mean_bias_pct, fill = color)) +
+  geom_col(color = "black", width = 0.7) +
+  geom_errorbar(aes(ymin = mean_bias_pct - sd_bias_pct,
+                    ymax = mean_bias_pct + sd_bias_pct),
+                width = 0.2) +
+  geom_hline(yintercept = 0, color = "black") +
+  geom_hline(yintercept = SPEC_LIMIT, linetype = "dashed", color = "#C8102E") +
+  geom_hline(yintercept = -SPEC_LIMIT, linetype = "dashed", color = "#C8102E") +
+  annotate("rect", xmin = -Inf, xmax = Inf,
+           ymin = -SPEC_LIMIT, ymax = SPEC_LIMIT,
+           fill = "#00843D", alpha = 0.1) +
+  scale_fill_identity() +
+  labs(
+    title = "Percent Bias at Each Interferent Concentration",
+    subtitle = sprintf("Acceptance limits: ±%.1f%%", SPEC_LIMIT),
+    x = sprintf("%s Concentration (%s)", INTERFERENT, filtered$interferent_unit[1]),
+    y = "Bias (%)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(plot.title = element_text(face = "bold"))
+```
+
+## Assessment Summary
+
+```{r assessment-table, echo=FALSE}
+stats_df |>
+  select(interferent_concentration, n, mean_measured, sd_measured, cv_percent, mean_bias_pct, assessment) |>
+  gt() |>
+  cols_label(
+    interferent_concentration = "Concentration",
+    n = "N",
+    mean_measured = "Mean",
+    sd_measured = "SD",
+    cv_percent = "CV%",
+    mean_bias_pct = "Bias%",
+    assessment = "Result"
+  ) |>
+  fmt_number(columns = c(mean_measured, sd_measured), decimals = 3) |>
+  fmt_number(columns = c(cv_percent, mean_bias_pct), decimals = 2) |>
+  data_color(
+    columns = assessment,
+    colors = scales::col_factor(
+      palette = c("#F5F5F5", "#FF6D00", "#C8102E", "#00843D"),
+      domain = c("Baseline", "Borderline", "OOS", "Pass")
+    )
+  ) |>
+  tab_header(
+    title = "Interference Assessment Results",
+    subtitle = sprintf("Acceptance: ±%.1f%%", SPEC_LIMIT)
+  )
+```
+
+# Statistical Analysis
+
+## TOST Equivalence Test
+
+Two One-Sided Tests (TOST) procedure to demonstrate statistical equivalence within ±`r EQUIV_MARGIN`% margin:
+
+```{r tost-analysis, echo=FALSE}
+baseline_data <- filtered |> filter(interferent_concentration == 0)
+test_data <- filtered |> filter(interferent_concentration > 0)
+
+if (nrow(baseline_data) >= 3 && nrow(test_data) >= 3) {
+  tost_results <- test_data |>
+    group_by(interferent_concentration) |>
+    summarise(
+      n_test = n(),
+      mean_test = mean(measured_value),
+      sd_test = sd(measured_value),
+      .groups = "drop"
+    ) |>
+    mutate(
+      baseline_mean = mean(baseline_data$measured_value),
+      baseline_sd = sd(baseline_data$measured_value),
+      n_baseline = nrow(baseline_data),
+      diff = mean_test - baseline_mean,
+      diff_pct = (diff / baseline_mean) * 100,
+      pooled_se = sqrt(sd_test^2 / n_test + baseline_sd^2 / n_baseline),
+      t_lower = (diff - (-EQUIV_MARGIN / 100 * baseline_mean)) / pooled_se,
+      t_upper = (diff - (EQUIV_MARGIN / 100 * baseline_mean)) / pooled_se,
+      df = n_test + n_baseline - 2,
+      p_lower = 1 - pt(t_lower, df),
+      p_upper = pt(t_upper, df),
+      equivalent = p_lower < 0.05 & p_upper < 0.05
+    )
+
+  tost_results |>
+    select(interferent_concentration, n_test, diff_pct, p_lower, p_upper, equivalent) |>
+    gt() |>
+    cols_label(
+      interferent_concentration = "Concentration",
+      n_test = "N",
+      diff_pct = "Diff (%)",
+      p_lower = "P (lower)",
+      p_upper = "P (upper)",
+      equivalent = "Equivalent"
+    ) |>
+    fmt_number(columns = c(diff_pct), decimals = 2) |>
+    fmt_number(columns = c(p_lower, p_upper), decimals = 4) |>
+    data_color(
+      columns = equivalent,
+      colors = scales::col_factor(
+        palette = c("#C8102E", "#00843D"),
+        domain = c(FALSE, TRUE)
+      )
+    ) |>
+    tab_header(
+      title = "TOST Equivalence Results",
+      subtitle = sprintf("α = 0.05, Equivalence margin = ±%.1f%%", EQUIV_MARGIN)
+    )
+} else {
+  cat("Insufficient data for TOST analysis.")
+}
+```
+
+## Linear Regression
+
+```{r regression, echo=FALSE}
+non_baseline <- stats_df |> filter(interferent_concentration > 0)
+
+if (nrow(non_baseline) >= 3) {
+  model <- lm(mean_bias_pct ~ interferent_concentration, data = non_baseline)
+
+  tidy(model) |>
+    gt() |>
+    fmt_number(columns = c(estimate, std.error, statistic), decimals = 4) |>
+    fmt_number(columns = p.value, decimals = 4) |>
+    tab_header(
+      title = "Linear Regression: Bias vs Concentration",
+      subtitle = sprintf("R² = %.4f", summary(model)$r.squared)
+    )
+}
+```
+
+# Conclusion
+
+```{r conclusion, echo=FALSE, results='asis'}
+pass_count <- sum(stats_df$assessment == "Pass")
+borderline_count <- sum(stats_df$assessment == "Borderline")
+oos_count <- sum(stats_df$assessment == "OOS")
+total_tested <- pass_count + borderline_count + oos_count
+
+cat("## Study Disposition\n\n")
+cat(sprintf("| Metric | Value |\n"))
+cat("|--------|-------|\n")
+cat(sprintf("| Concentrations Tested | %d |\n", total_tested + 1))
+cat(sprintf("| Pass | %d |\n", pass_count))
+cat(sprintf("| Borderline | %d |\n", borderline_count))
+cat(sprintf("| OOS | %d |\n", oos_count))
+cat(sprintf("| Acceptance Criterion | ±%.1f%% |\n\n", SPEC_LIMIT))
+
+if (oos_count > 0) {
+  cat("**OVERALL RESULT: FAIL**\n\n")
+  cat("The analytical method does not meet ICH Q2(R1) specificity requirements for the tested interferent range.\n")
+} else {
+  cat("**OVERALL RESULT: PASS**\n\n")
+  cat("The analytical method meets ICH Q2(R1) specificity requirements. ")
+  cat(sprintf("%s does not significantly interfere with %s quantitation across the tested concentration range.\n",
+              INTERFERENT, ANALYTE))
+}
+```
+
+# Signatures
+
+| Role | Name | Signature | Date |
+|------|------|-----------|------|
+| **Performed By** | _________________ | _________________ | ________ |
+| **Reviewed By** | _________________ | _________________ | ________ |
+| **Approved By** | _________________ | _________________ | ________ |
+
+---
+
+# Appendix A: Raw Data (First 20 Records)
+
+```{r raw-data, echo=FALSE}
+filtered |>
+  head(20) |>
+  select(interferent_concentration, pool_level, replicate, baseline_value,
+         measured_value, bias_percent, technician_id, instrument_id) |>
+  gt() |>
+  fmt_number(columns = c(baseline_value, measured_value), decimals = 3) |>
+  fmt_number(columns = bias_percent, decimals = 2) |>
+  tab_header(title = "Raw Study Data (Sample)")
+```
+
+---
+
+*Report generated automatically using Posit Quarto per protocol `r PROTOCOL`.*
+
+*Analysis conducted per ICH Q2(R1) and CLSI EP07-A3 guidelines.*
+
+*This document is electronically generated. Signatures above constitute approval.*
