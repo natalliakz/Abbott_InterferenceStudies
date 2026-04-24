@@ -147,7 +147,7 @@ ui <- page_navbar(
     accordion(
       accordion_panel(
         "Study Selection",
-        icon = bsicons::bs_icon("flask"),
+        icon = bsicons::bs_icon("eyedropper"),
         selectInput("analyte", "Active Pharmaceutical Ingredient (API)",
                     choices = sort(unique(studies_df$analyte)),
                     selected = "Glucose"),
@@ -236,7 +236,7 @@ ui <- page_navbar(
 
   nav_panel(
     "Equivalence Test",
-    icon = bsicons::bs_icon("arrows-collapse"),
+    icon = bsicons::bs_icon("arrow-left-right"),
     card(
       card_header(
         class = "bg-primary text-white",
@@ -256,7 +256,7 @@ ui <- page_navbar(
 
   nav_panel(
     "AI Deviation Analysis",
-    icon = bsicons::bs_icon("robot"),
+    icon = bsicons::bs_icon("cpu"),
     card(
       card_header(
         class = "bg-warning",
