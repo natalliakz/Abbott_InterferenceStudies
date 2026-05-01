@@ -133,7 +133,9 @@ This demo positions AI for **workflow efficiency**, not batch-release decisions:
 2. **Data Standardization** - Harmonize messy metadata entries
 3. **Code Generation** - GitHub Copilot / chattr for learning R/Python
 
-The Python app uses Claude via AWS Bedrock for AI-powered study summaries and Q&A.
+The Python app uses Claude via AWS Bedrock with `chatlas` and `querychat` packages:
+- **AI Summary tab** - Uses `chatlas.ChatBedrockAnthropic` for generating professional study summaries
+- **AI Chat tab** - Uses `querychat` for interactive data exploration and filtering
 
 ### AWS Credentials Configuration
 
@@ -227,11 +229,44 @@ Abbott_InterferenceStudies/
 
 ## Deployment to Posit Connect
 
-```r
-# R Shiny app
-rsconnect::deployApp(".", appName = "abbott-interference-analyzer")
+### Python Shiny App (app.py)
 
-# Quarto report
+**Files to include when publishing:**
+- `app.py` - Main application
+- `requirements.txt` - Python dependencies
+- `data/` - Data directory (entire folder)
+  - `interference_studies.csv`
+  - `decision_limits.csv`
+  - `instruments.csv`
+  - `generate_data.py`
+
+**Using rsconnect-python:**
+```bash
+rsconnect deploy shiny . \
+  --name your-connect-server \
+  --title "Abbott Interference Analyzer" \
+  --entrypoint app:app
+```
+
+**Using Posit Publisher extension in Positron/VS Code:**
+1. Open the Command Palette (Cmd+Shift+P)
+2. Select "Posit: Publish to Connect"
+3. Choose `app.py` as the entrypoint
+4. Select files to include (app.py, requirements.txt, data/)
+
+**After deployment**, add environment variables in Connect:
+- Go to your app's **Settings** > **Vars** tab
+- Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`
+
+### R Shiny App (app.R)
+
+```r
+rsconnect::deployApp(".", appName = "abbott-interference-analyzer-r")
+```
+
+### Quarto Report
+
+```r
 quarto::quarto_publish_doc("reports/interference_report.qmd")
 ```
 

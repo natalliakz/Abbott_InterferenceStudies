@@ -18,7 +18,8 @@ from shinywidgets import render_widget, output_widget
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import anthropic
+from chatlas import ChatBedrockAnthropic
+import querychat
 
 # Configuration
 DATA_PATH = Path(__file__).parent / "data"
@@ -31,9 +32,12 @@ ABBOTT_COLORS = {
     "light": "#F5F5F5",
 }
 
-# Initialize Anthropic client with AWS Bedrock
-bedrock_client = anthropic.AnthropicBedrock(aws_region="us-west-2")
-MODEL_ID = "us.anthropic.claude-sonnet-4-20250514-v1:0"
+# Initialize chatlas client with AWS Bedrock
+chat_client = ChatBedrockAnthropic(
+    model="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    aws_region="us-west-2",
+    max_tokens=1024
+)
 
 
 def load_data():
@@ -50,6 +54,26 @@ def load_data():
 
 
 studies_df, limits_df, instruments_df = load_data()
+
+# Initialize querychat for interactive data Q&A (after data is loaded)
+qc = querychat.QueryChat(
+    data_source=studies_df,
+    table_name="interference_studies",
+    id="querychat",
+    data_description="""Interference study data for pharmaceutical assays per CLSI EP07-A3 guidelines.
+    Contains measurements of analyte values at different interferent concentrations.
+    Key columns: analyte, interferent, interferent_concentration, measured_value, bias_percent.
+    Used to determine if interferents cause clinically significant bias in assay results.""",
+    greeting="""Welcome to the ICH Q2 Interference Study Assistant!
+
+I can help you explore the interference study data. Try asking:
+- "Which analyte-interferent pairs show the highest bias?"
+- "What is the average bias for Hemolysis interference on Glucose?"
+- "Show me the data for Troponin I with Biotin"
+- "Filter to show only results with bias > 10%"
+""",
+    client=chat_client
+)
 
 
 def calculate_statistics(data):
@@ -136,12 +160,8 @@ Provide a concise professional summary including:
 Format as a plain-text report suitable for inclusion in a validation document. Keep it under 200 words."""
 
     try:
-        response = bedrock_client.messages.create(
-            model=MODEL_ID,
-            max_tokens=500,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.content[0].text
+        response = chat_client.chat(prompt, echo="none")
+        return str(response)
     except Exception as e:
         return f"Error generating AI summary: {str(e)}"
 
@@ -224,11 +244,20 @@ app_ui = ui.page_sidebar(
                 ui.input_action_button("generate_summary", "Generate Summary", class_="btn-secondary mb-3"),
                 ui.output_text_verbatim("ai_summary"),
             ),
-            ui.card(
-                ui.card_header("LLM-Powered Analysis Assistant"),
-                ui.input_text_area("user_question", "Ask a question about the data:", rows=3, placeholder="e.g., What is the threshold concentration for significant interference?"),
-                ui.input_action_button("ask_ai", "Ask Claude", class_="btn-primary"),
-                ui.output_text_verbatim("ai_response"),
+        ),
+        ui.nav_panel(
+            "AI Chat",
+            ui.layout_columns(
+                ui.card(
+                    ui.card_header("Chat with Your Data"),
+                    qc.ui(),
+                    height="500px",
+                ),
+                ui.card(
+                    ui.card_header("Filtered Data Preview"),
+                    ui.output_data_frame("querychat_data"),
+                ),
+                col_widths=[6, 6]
             ),
         ),
         ui.nav_panel(
@@ -252,6 +281,12 @@ app_ui = ui.page_sidebar(
 
 
 def server(input, output, session):
+    # Initialize querychat server
+    qc_result = qc.server()
+
+    @render.data_frame
+    def querychat_data():
+        return render.DataGrid(qc_result.df(), selection_mode="none")
 
     @reactive.calc
     def filtered_data():
@@ -493,44 +528,6 @@ def server(input, output, session):
     def ai_summary():
         assessment = assessment_data()
         return generate_ai_summary(input.analyte(), input.interferent(), assessment)
-
-    @render.text
-    @reactive.event(input.ask_ai)
-    def ai_response():
-        if not input.user_question():
-            return "Please enter a question."
-
-        assessment = assessment_data()
-        analyte = input.analyte()
-        interferent = input.interferent()
-        question = input.user_question()
-
-        data_summary = assessment.to_string(index=False)
-
-        prompt = f"""You are an expert clinical chemist helping analyze interference study data per ICH Q2(R1) and CLSI EP07-A3 guidelines.
-
-Current study context:
-- Analyte: {analyte}
-- Interferent: {interferent}
-
-Study data:
-{data_summary}
-
-User question: {question}
-
-Provide a clear, concise answer based on the data. If the question asks about thresholds, safety, or recommendations, ground your answer in the actual data values shown. Keep your response under 150 words."""
-
-        try:
-            response = bedrock_client.messages.create(
-                model=MODEL_ID,
-                max_tokens=400,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            answer = response.content[0].text
-        except Exception as e:
-            answer = f"Error: {str(e)}"
-
-        return f"=== AI Analysis Assistant ===\n\nQuestion: {question}\n\n{answer}"
 
     @render_widget
     def heatmap_plot():
