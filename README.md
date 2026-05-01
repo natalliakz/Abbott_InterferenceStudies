@@ -50,10 +50,10 @@ A GxP-compliant application featuring:
 
 ### Python Shiny Dashboard (`app.py`) - Alternative
 
-For Python-preferred teams (requires pip/venv):
+For Python-preferred teams (requires uv/venv):
 
 - Interactive plotly visualizations
-- Simulated AI responses for demo
+- **AI-powered study summaries and Q&A** via Claude on AWS Bedrock
 - Data upload capability
 - Heatmap overview of all analyte-interferent pairs
 
@@ -82,8 +82,12 @@ R -e "install.packages(c('shiny', 'bslib', 'dplyr', 'tidyr', 'ggplot2', 'plotly'
 ### Python Packages (Optional - for app.py only)
 
 ```bash
-# Only if you have pip available
-pip install -r requirements.txt
+# Create and activate virtual environment with uv
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+uv pip install -r requirements.txt
 ```
 
 ## Running the Apps
@@ -103,7 +107,8 @@ Then open: http://localhost:8050
 ### Python Shiny App
 
 ```bash
-# Requires pip install first
+# Activate venv first, then run
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 shiny run app.py --port 8051
 ```
 
@@ -128,7 +133,69 @@ This demo positions AI for **workflow efficiency**, not batch-release decisions:
 2. **Data Standardization** - Harmonize messy metadata entries
 3. **Code Generation** - GitHub Copilot / chattr for learning R/Python
 
-Note: AI features use simulated responses - no API keys required.
+The Python app uses Claude via AWS Bedrock for AI-powered study summaries and Q&A.
+
+### AWS Credentials Configuration
+
+#### Option 1: Posit Workbench / Positron (Local Development)
+
+Configure AWS credentials using the AWS CLI or environment variables:
+
+```bash
+# Using AWS CLI (recommended)
+aws configure
+# Enter your AWS Access Key ID, Secret Access Key, and region (us-west-2)
+
+# Or set environment variables in your shell profile (~/.bashrc, ~/.zshrc)
+export AWS_ACCESS_KEY_ID="your-access-key-id"
+export AWS_SECRET_ACCESS_KEY="your-secret-access-key"
+export AWS_DEFAULT_REGION="us-west-2"
+```
+
+For Positron/VS Code, you can also add these to your workspace `.env` file:
+
+```
+AWS_ACCESS_KEY_ID=your-access-key-id
+AWS_SECRET_ACCESS_KEY=your-secret-access-key
+AWS_DEFAULT_REGION=us-west-2
+```
+
+#### Option 2: Posit Connect (Deployment)
+
+When publishing to Posit Connect, configure AWS credentials using **Environment Variables** in the Connect dashboard:
+
+1. Deploy the app using `rsconnect-python` or the Posit Publisher extension
+2. In Posit Connect, navigate to your app's **Settings** > **Vars** tab
+3. Add the following environment variables:
+   - `AWS_ACCESS_KEY_ID` - Your AWS access key
+   - `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
+   - `AWS_DEFAULT_REGION` - Set to `us-west-2`
+
+**For production deployments**, use IAM roles instead of access keys:
+- If Posit Connect runs on AWS (EC2/EKS), attach an IAM role with Bedrock permissions to the instance
+- The Anthropic SDK will automatically use the instance role credentials
+
+#### Required IAM Permissions
+
+Your AWS credentials need the following Bedrock permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": "arn:aws:bedrock:us-west-2::foundation-model/anthropic.*"
+    }
+  ]
+}
+```
+
+Ensure Claude models are enabled in your AWS Bedrock console (Model Access).
 
 ## Synthetic Data
 

@@ -18,6 +18,7 @@ from shinywidgets import render_widget, output_widget
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import anthropic
 
 # Configuration
 DATA_PATH = Path(__file__).parent / "data"
@@ -29,6 +30,10 @@ ABBOTT_COLORS = {
     "danger": "#C8102E",
     "light": "#F5F5F5",
 }
+
+# Initialize Anthropic client with AWS Bedrock
+bedrock_client = anthropic.AnthropicBedrock(aws_region="us-west-2")
+MODEL_ID = "us.anthropic.claude-sonnet-4-20250514-v1:0"
 
 
 def load_data():
@@ -113,50 +118,32 @@ def assess_interference(stats_df, analyte, limits_df):
 
 
 def generate_ai_summary(analyte, interferent, assessment_df):
-    """Generate AI-powered plain-text summary of interference results."""
-    significant = assessment_df[assessment_df["assessment"] == "SIGNIFICANT"]
-    baseline_row = assessment_df[assessment_df["interferent_concentration"] == 0]
+    """Generate AI-powered plain-text summary of interference results using Claude via AWS Bedrock."""
+    data_summary = assessment_df.to_string(index=False)
 
-    if baseline_row.empty:
-        return "Unable to generate summary: No baseline data available."
+    prompt = f"""You are an expert clinical chemist analyzing interference study data per ICH Q2(R1) and CLSI EP07-A3 guidelines.
 
-    baseline = baseline_row["mean_measured"].values[0]
+Analyze the following interference study results for {analyte} with interferent {interferent}:
 
-    if significant.empty:
-        threshold_statement = f"No significant interference was detected at any tested concentration of {interferent}."
-        recommendation = "The assay demonstrates acceptable performance across the tested interferent range."
-    else:
-        threshold_conc = significant["interferent_concentration"].min()
-        max_bias = significant["mean_bias_pct"].abs().max()
-        unit = assessment_df["interferent_concentration"].iloc[0] if len(assessment_df) > 0 else ""
+{data_summary}
 
-        direction = "positive" if significant["mean_bias_pct"].iloc[0] > 0 else "negative"
+Provide a concise professional summary including:
+1. Study identification (analyte, interferent, baseline value)
+2. Key findings (threshold concentration where significant interference occurs, if any)
+3. Clinical recommendation
+4. Reference to CLSI EP07-A3 compliance
 
-        threshold_statement = (
-            f"{interferent} shows SIGNIFICANT {direction} interference on {analyte} "
-            f"at concentrations at or above {threshold_conc:.0f}. "
-            f"Maximum observed bias: {max_bias:.1f}%."
+Format as a plain-text report suitable for inclusion in a validation document. Keep it under 200 words."""
+
+    try:
+        response = bedrock_client.messages.create(
+            model=MODEL_ID,
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}]
         )
-        recommendation = (
-            f"Consider sample rejection criteria for specimens with {interferent} "
-            f"levels above {threshold_conc:.0f}. Alternative testing methods may be required."
-        )
-
-    summary = f"""
-INTERFERENCE STUDY SUMMARY
-Analyte: {analyte}
-Interferent: {interferent}
-Baseline Value: {baseline:.2f}
-
-FINDINGS:
-{threshold_statement}
-
-RECOMMENDATION:
-{recommendation}
-
-Study conducted per CLSI EP07-A3 guidelines.
-"""
-    return summary.strip()
+        return response.content[0].text
+    except Exception as e:
+        return f"Error generating AI summary: {str(e)}"
 
 
 app_ui = ui.page_sidebar(
@@ -514,44 +501,36 @@ def server(input, output, session):
             return "Please enter a question."
 
         assessment = assessment_data()
-        question = input.user_question().lower()
         analyte = input.analyte()
         interferent = input.interferent()
+        question = input.user_question()
 
-        significant = assessment[assessment["assessment"] == "SIGNIFICANT"]
-        baseline_row = assessment[assessment["interferent_concentration"] == 0]
-        baseline = baseline_row["mean_measured"].values[0] if not baseline_row.empty else 0
+        data_summary = assessment.to_string(index=False)
 
-        if "threshold" in question or "significant" in question or "limit" in question:
-            if significant.empty:
-                answer = f"No significant interference was detected for {interferent} on {analyte} at any tested concentration. All results remain within acceptable limits."
-            else:
-                threshold = significant["interferent_concentration"].min()
-                max_bias = significant["mean_bias_pct"].abs().max()
-                answer = f"Significant interference occurs at {interferent} concentrations ≥{threshold:.0f}. Maximum observed bias: {max_bias:.1f}%. Samples with {interferent} above this threshold should be flagged for review or rejection."
+        prompt = f"""You are an expert clinical chemist helping analyze interference study data per ICH Q2(R1) and CLSI EP07-A3 guidelines.
 
-        elif "safe" in question or "acceptable" in question or "pass" in question:
-            if significant.empty:
-                answer = f"Yes, the {analyte} assay demonstrates acceptable performance in the presence of {interferent} across the tested concentration range. No special handling is required."
-            else:
-                threshold = significant["interferent_concentration"].min()
-                answer = f"The assay is acceptable for samples with {interferent} below {threshold:.0f}. Above this level, significant interference occurs and alternative testing may be required."
+Current study context:
+- Analyte: {analyte}
+- Interferent: {interferent}
 
-        elif "recommend" in question or "action" in question or "what should" in question:
-            if significant.empty:
-                answer = "No special actions required. The assay performs within specifications across all tested interferent levels. Continue routine testing procedures."
-            else:
-                threshold = significant["interferent_concentration"].min()
-                answer = f"Recommended actions:\n1. Implement sample rejection criteria for {interferent} ≥{threshold:.0f}\n2. Document findings in the method validation report\n3. Consider alternative methodology for affected samples\n4. Update laboratory SOP accordingly"
+Study data:
+{data_summary}
 
-        elif "baseline" in question or "control" in question:
-            answer = f"The baseline (no interferent) mean value for {analyte} is {baseline:.3f}. This serves as the reference point for calculating percent bias at each interferent concentration."
+User question: {question}
 
-        else:
-            stats_summary = f"Mean baseline: {baseline:.3f}, Concentrations tested: {len(assessment)}, Significant results: {len(significant)}"
-            answer = f"Analysis summary for {interferent} interference on {analyte}:\n{stats_summary}\n\nFor specific questions, try asking about:\n- Threshold concentrations\n- Whether results are acceptable\n- Recommended actions\n- Baseline values"
+Provide a clear, concise answer based on the data. If the question asks about thresholds, safety, or recommendations, ground your answer in the actual data values shown. Keep your response under 150 words."""
 
-        return f"=== AI Analysis Assistant ===\n\nQuestion: {input.user_question()}\n\n{answer}\n\n(Note: This is a simulated AI response for demonstration purposes.)"
+        try:
+            response = bedrock_client.messages.create(
+                model=MODEL_ID,
+                max_tokens=400,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            answer = response.content[0].text
+        except Exception as e:
+            answer = f"Error: {str(e)}"
+
+        return f"=== AI Analysis Assistant ===\n\nQuestion: {question}\n\n{answer}"
 
     @render_widget
     def heatmap_plot():

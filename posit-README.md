@@ -131,8 +131,9 @@ cd Abbott_InterferenceStudies
 R -e "install.packages(c('shiny', 'bslib', 'dplyr', 'tidyr', 'ggplot2', 'plotly', 'gtsummary', 'gt', 'readr', 'purrr', 'broom', 'bsicons'))"
 
 # Python dependencies (for app.py)
-pip install -r requirements.txt
-export ANTHROPIC_API_KEY="your-key-here"
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
 ```
 
 ### Running the Demo
@@ -177,6 +178,7 @@ quarto publish connect reports/interference_report.qmd
 - "We're not using AI for batch release decisions."
 - "AI helps with code generation, root cause brainstorming, and data cleanup."
 - "All final decisions remain with your qualified scientists."
+- "We use Claude via AWS Bedrock for enterprise security and compliance."
 
 ### "What about 21 CFR Part 11 compliance?"
 - "Git provides complete audit trail with timestamps and user IDs."
