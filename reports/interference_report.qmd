@@ -4,18 +4,12 @@ subtitle: "Pharmaceutical Analytical Method Validation"
 author: "Abbott Manufacturing - Analytical Development"
 date: today
 format:
-  pdf:
-    toc: true
-    number-sections: true
-    colorlinks: true
   html:
     theme: cosmo
     toc: true
     toc-depth: 3
     code-fold: true
     embed-resources: true
-  docx:
-    toc: true
 execute:
   warning: false
   message: false
